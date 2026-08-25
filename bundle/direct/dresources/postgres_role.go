@@ -154,11 +154,27 @@ func (r *ResourcePostgresRole) DoCreate(ctx context.Context, config *PostgresRol
 	return remote.Name, remote, nil
 }
 
+// roleSpecUpdateMask maps every postgres.RoleRoleSpec field to the update_mask
+// path UpdateRole accepts for it. Verified against the API on 2026-08-24;
+// TestPostgresSpecUpdateMasks keeps it in step with the SDK type.
+var roleSpecUpdateMask = specUpdateMask{
+	"attributes.bypassrls":  "attributes.bypassrls",
+	"attributes.createdb":   "attributes.createdb",
+	"attributes.createrole": "attributes.createrole",
+	"membership_roles":      "membership_roles",
+
+	// These have no update_mask path. A change to them recreates the role
+	// (recreate_on_changes in resources.yml).
+	"auth_method":   "",
+	"identity_type": "",
+	"postgres_role": "",
+}
+
 func (r *ResourcePostgresRole) DoUpdate(ctx context.Context, id string, config *PostgresRoleState, entry *PlanEntry) (*PostgresRoleRemote, error) {
-	// Build update mask from fields that have action="update" in the changes map.
-	// Prefix with "spec." because the API expects paths relative to the Role
-	// object, not relative to our flattened state type.
-	fieldPaths := collectLeafUpdatePathsWithPrefix(entry.Changes, "spec.")
+	fieldPaths, err := specUpdateMaskPaths(&config.RoleRoleSpec, roleSpecUpdateMask)
+	if err != nil {
+		return nil, err
+	}
 
 	waiter, err := r.client.Postgres.UpdateRole(ctx, postgres.UpdateRoleRequest{
 		Name: id,

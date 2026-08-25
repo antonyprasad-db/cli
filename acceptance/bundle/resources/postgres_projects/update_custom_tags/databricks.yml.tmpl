@@ -1,0 +1,15 @@
+bundle:
+  name: update-postgres-project-tags-$UNIQUE_NAME
+
+sync:
+  paths: []
+
+resources:
+  postgres_projects:
+    my_project:
+      project_id: test-pg-proj-$UNIQUE_NAME
+      display_name: "Tagged Project"
+      pg_version: 16
+      custom_tags:
+        - key: release_id
+          value: "release-1"

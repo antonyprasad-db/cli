@@ -1,0 +1,3 @@
+# The direct engine is the one that builds an update_mask from the plan's change
+# list; terraform sends its own mask.
+EnvMatrix.DATABRICKS_BUNDLE_ENGINE = ["direct"]

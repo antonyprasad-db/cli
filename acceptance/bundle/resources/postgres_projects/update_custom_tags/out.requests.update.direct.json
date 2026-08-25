@@ -1,0 +1,23 @@
+{
+  "method": "GET",
+  "path": "/api/2.0/postgres/projects/test-pg-proj-[UNIQUE_NAME]"
+}
+{
+  "method": "PATCH",
+  "path": "/api/2.0/postgres/projects/test-pg-proj-[UNIQUE_NAME]",
+  "q": {
+    "update_mask": "spec.custom_tags,spec.display_name"
+  },
+  "body": {
+    "spec": {
+      "custom_tags": [
+        {
+          "key": "release_id",
+          "value": "release-2"
+        }
+      ],
+      "display_name": "Tagged Project",
+      "pg_version": 16
+    }
+  }
+}

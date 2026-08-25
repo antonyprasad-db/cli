@@ -176,12 +176,33 @@ func (r *ResourcePostgresEndpoint) DoCreate(ctx context.Context, config *Postgre
 	return remote.Name, remote, nil
 }
 
+// endpointSpecUpdateMask maps every postgres.EndpointSpec field to the update_mask
+// path UpdateEndpoint accepts for it. Verified against the API on 2026-08-24;
+// TestPostgresSpecUpdateMasks keeps it in step with the SDK type.
+var endpointSpecUpdateMask = specUpdateMask{
+	"autoscaling_limit_max_cu":          "autoscaling_limit_max_cu",
+	"autoscaling_limit_min_cu":          "autoscaling_limit_min_cu",
+	"disabled":                          "disabled",
+	"group.enable_readable_secondaries": "group.enable_readable_secondaries",
+	"group.max":                         "group.max",
+	"group.min":                         "group.min",
+	"settings.pg_settings":              "settings.pg_settings",
+
+	// no_suspension and suspend_timeout_duration are two sides of one oneof; the
+	// API masks them together under "suspension" and rejects either field name.
+	"no_suspension":            "suspension",
+	"suspend_timeout_duration": "suspension",
+
+	// endpoint_type has no update_mask path. A change to it recreates the
+	// endpoint (recreate_on_changes in resources.generated.yml).
+	"endpoint_type": "",
+}
+
 func (r *ResourcePostgresEndpoint) DoUpdate(ctx context.Context, id string, config *PostgresEndpointState, entry *PlanEntry) (*PostgresEndpointRemote, error) {
-	// Build update mask from fields that have action="update" in the changes map.
-	// This excludes immutable fields and fields that haven't changed.
-	// Prefix with "spec." because the API expects paths relative to the Endpoint object,
-	// not relative to our flattened state type.
-	fieldPaths := collectUpdatePathsWithPrefix(entry.Changes, "spec.")
+	fieldPaths, err := specUpdateMaskPaths(&config.EndpointSpec, endpointSpecUpdateMask)
+	if err != nil {
+		return nil, err
+	}
 
 	waiter, err := r.client.Postgres.UpdateEndpoint(ctx, postgres.UpdateEndpointRequest{
 		Endpoint: postgres.Endpoint{

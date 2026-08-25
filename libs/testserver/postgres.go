@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -66,6 +67,32 @@ func postgresManagedByParentErrorResponse(message string) Response {
 	}
 }
 
+// updateMaskPaths returns the paths listed in the request's update_mask.
+func updateMaskPaths(req Request) []string {
+	mask := req.URL.Query().Get("update_mask")
+	if mask == "" {
+		return nil
+	}
+	return strings.Split(mask, ",")
+}
+
+// unknownUpdateMaskPath returns the first update_mask path the API would reject as
+// unknown. The API addresses a repeated field or a map as a whole: there is no
+// field path for an individual element, so a path carrying an index or a key is
+// rejected outright.
+func unknownUpdateMaskPath(req Request) string {
+	for _, path := range updateMaskPaths(req) {
+		if strings.ContainsAny(path, "[]") {
+			return path
+		}
+	}
+	return ""
+}
+
+func unknownUpdateMaskPathResponse(path string) Response {
+	return postgresErrorResponse(400, "INVALID_PARAMETER_VALUE", fmt.Sprintf("Unknown field path in update_mask: '%s'", path))
+}
+
 // postgresNotFoundResponse creates a NOT_FOUND error response for a resource type.
 func postgresNotFoundResponse(resourceType string) Response {
 	// Include trace ID to match real API behavior for not found errors
@@ -122,6 +149,7 @@ func (s *FakeWorkspace) PostgresProjectCreate(req Request, projectID string) Res
 
 		project.Status = &postgres.ProjectStatus{
 			ProjectId:                   projectID,
+			CustomTags:                  project.Spec.CustomTags,
 			DefaultBranch:               name + "/branches/production",
 			DisplayName:                 project.Spec.DisplayName,
 			PgVersion:                   project.Spec.PgVersion,
@@ -196,6 +224,10 @@ func (s *FakeWorkspace) PostgresProjectList() Response {
 
 // PostgresProjectUpdate updates a postgres project.
 func (s *FakeWorkspace) PostgresProjectUpdate(req Request, name string) Response {
+	if path := unknownUpdateMaskPath(req); path != "" {
+		return unknownUpdateMaskPathResponse(path)
+	}
+
 	defer s.LockUnlock()()
 
 	project, exists := s.PostgresProjects[name]
@@ -220,6 +252,11 @@ func (s *FakeWorkspace) PostgresProjectUpdate(req Request, name string) Response
 		}
 		if updateProject.Spec.DisplayName != "" {
 			project.Status.DisplayName = updateProject.Spec.DisplayName
+		}
+		// The tag list is replaced wholesale when the mask names it, and left
+		// untouched when it does not — there is no per-element update.
+		if slices.Contains(updateMaskPaths(req), "spec.custom_tags") {
+			project.Status.CustomTags = updateProject.Spec.CustomTags
 		}
 		if updateProject.Spec.DefaultEndpointSettings != nil {
 			if project.Status.DefaultEndpointSettings == nil {
@@ -419,6 +456,10 @@ func (s *FakeWorkspace) PostgresBranchList(parent string) Response {
 
 // PostgresBranchUpdate updates a postgres branch.
 func (s *FakeWorkspace) PostgresBranchUpdate(req Request, name string) Response {
+	if path := unknownUpdateMaskPath(req); path != "" {
+		return unknownUpdateMaskPathResponse(path)
+	}
+
 	defer s.LockUnlock()()
 
 	branch, exists := s.PostgresBranches[name]
@@ -655,6 +696,10 @@ func (s *FakeWorkspace) PostgresEndpointList(parent string) Response {
 
 // PostgresEndpointUpdate updates a postgres endpoint.
 func (s *FakeWorkspace) PostgresEndpointUpdate(req Request, name string) Response {
+	if path := unknownUpdateMaskPath(req); path != "" {
+		return unknownUpdateMaskPathResponse(path)
+	}
+
 	defer s.LockUnlock()()
 
 	endpoint, exists := s.PostgresEndpoints[name]
@@ -861,6 +906,10 @@ func (s *FakeWorkspace) PostgresDatabaseList(parent string) Response {
 
 // PostgresDatabaseUpdate updates a postgres database.
 func (s *FakeWorkspace) PostgresDatabaseUpdate(req Request, name string) Response {
+	if path := unknownUpdateMaskPath(req); path != "" {
+		return unknownUpdateMaskPathResponse(path)
+	}
+
 	defer s.LockUnlock()()
 
 	database, exists := s.PostgresDatabases[name]
@@ -1204,6 +1253,10 @@ func (s *FakeWorkspace) PostgresRoleList(parent string) Response {
 // desired spec. An empty update_mask updates all fields, matching the API
 // ("if unspecified, all fields will be updated when possible").
 func (s *FakeWorkspace) PostgresRoleUpdate(req Request, name string) Response {
+	if path := unknownUpdateMaskPath(req); path != "" {
+		return unknownUpdateMaskPathResponse(path)
+	}
+
 	defer s.LockUnlock()()
 
 	role, exists := s.PostgresRoles[name]

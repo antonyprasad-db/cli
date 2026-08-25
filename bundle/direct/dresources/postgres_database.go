@@ -130,12 +130,19 @@ func (r *ResourcePostgresDatabase) DoCreate(ctx context.Context, config *Postgre
 	return remote.Name, remote, nil
 }
 
+// databaseSpecUpdateMask maps every postgres.DatabaseDatabaseSpec field to the
+// update_mask path UpdateDatabase accepts for it. Verified against the API on
+// 2026-08-24; TestPostgresSpecUpdateMasks keeps it in step with the SDK type.
+var databaseSpecUpdateMask = specUpdateMask{
+	"postgres_database": "postgres_database",
+	"role":              "role",
+}
+
 func (r *ResourcePostgresDatabase) DoUpdate(ctx context.Context, id string, config *PostgresDatabaseState, entry *PlanEntry) (*PostgresDatabaseRemote, error) {
-	// Build update mask from fields that have action="update" in the changes map.
-	// This excludes immutable fields and fields that haven't changed.
-	// Prefix with "spec." because the API expects paths relative to the Database object,
-	// not relative to our flattened state type.
-	fieldPaths := collectLeafUpdatePathsWithPrefix(entry.Changes, "spec.")
+	fieldPaths, err := specUpdateMaskPaths(&config.DatabaseDatabaseSpec, databaseSpecUpdateMask)
+	if err != nil {
+		return nil, err
+	}
 
 	waiter, err := r.client.Postgres.UpdateDatabase(ctx, postgres.UpdateDatabaseRequest{
 		Database: postgres.Database{

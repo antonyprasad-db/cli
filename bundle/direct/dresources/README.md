@@ -34,6 +34,8 @@ Do **not** derive update mask field names from `entry.Changes`. The paths in `en
 
 If a resource has fields that must not be sent in updates (deploy-only, lifecycle-only, etc.), document them explicitly with a `var` block and a comment explaining each exclusion.
 
+A static list is not always the same shape as the API's own field names. The Postgres endpoints (see `specUpdateMaskPaths` and the `*SpecUpdateMask` tables) need a static map rather than a static list, because the API rejects `*`: it expands the mask to leaves and requires every leaf to be populated in the request body, which a bundle that omits optional fields never is. The same tables record the two other ways an API field name and its mask path differ — members of a oneof are masked under the group name (`spec.ttl` must be sent as `spec.expiration`), and immutable fields have no mask path at all.
+
 ## Async APIs: WaitAfterCreate / WaitAfterUpdate
 
 For resources whose create or update is asynchronous (the resource is not immediately ready after the call returns), implement `WaitAfterCreate` and/or `WaitAfterUpdate` instead of polling inline inside DoCreate/DoUpdate. These are the correct extension points in the framework, and polling inline bypasses state persistence timing.

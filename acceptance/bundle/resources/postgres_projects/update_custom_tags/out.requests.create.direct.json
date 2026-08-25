@@ -1,0 +1,19 @@
+{
+  "method": "POST",
+  "path": "/api/2.0/postgres/projects",
+  "q": {
+    "project_id": "test-pg-proj-[UNIQUE_NAME]"
+  },
+  "body": {
+    "spec": {
+      "custom_tags": [
+        {
+          "key": "release_id",
+          "value": "release-1"
+        }
+      ],
+      "display_name": "Tagged Project",
+      "pg_version": 16
+    }
+  }
+}

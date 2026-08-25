@@ -2,7 +2,6 @@ package dresources
 
 import (
 	"context"
-	"slices"
 
 	"github.com/databricks/cli/bundle/config/resources"
 	"github.com/databricks/databricks-sdk-go"
@@ -136,24 +135,41 @@ func (r *ResourcePostgresProject) DoCreate(ctx context.Context, config *Postgres
 	return remote.Name, remote, nil
 }
 
-func (r *ResourcePostgresProject) DoUpdate(ctx context.Context, id string, config *PostgresProjectState, entry *PlanEntry) (*PostgresProjectRemote, error) {
-	// Build the mask from the plan's change list and prefix with "spec." (the
-	// API expects paths relative to Project). The API rejects mask entries
-	// that aren't also populated in the request body, and a wildcard "*"
-	// expands to nested attributes the body would have to set too — so we
-	// can't use a static all-fields mask. The change list naturally tracks
-	// what the user actually set, so the body and mask stay consistent.
-	fieldPaths := collectUpdatePathsWithPrefix(entry.Changes, "spec.")
+// projectSpecUpdateMask maps every postgres.ProjectSpec field to the update_mask
+// path UpdateProject accepts for it. Verified against the API on 2026-08-24;
+// TestPostgresSpecUpdateMasks keeps it in step with the SDK type.
+var projectSpecUpdateMask = specUpdateMask{
+	"budget_policy_id": "budget_policy_id",
+	"custom_tags":      "custom_tags",
+	"default_branch":   "default_branch",
+	"default_endpoint_settings.autoscaling_limit_max_cu": "default_endpoint_settings.autoscaling_limit_max_cu",
+	"default_endpoint_settings.autoscaling_limit_min_cu": "default_endpoint_settings.autoscaling_limit_min_cu",
+	"default_endpoint_settings.pg_settings":              "default_endpoint_settings.pg_settings",
+	"display_name":                                       "display_name",
+	"enable_pg_native_login":                             "enable_pg_native_login",
+	"history_retention_duration":                         "history_retention_duration",
 
-	// purge_on_delete is an input-only flag consulted at delete time; it is
-	// not a spec field. Strip it from the mask so toggling it between deploys
-	// becomes a state-only refresh (the framework saves newState when this
-	// returns nil error).
-	fieldPaths = slices.DeleteFunc(fieldPaths, func(p string) bool {
-		return p == "spec.purge_on_delete"
-	})
-	if len(fieldPaths) == 0 {
+	// no_suspension and suspend_timeout_duration are two sides of one oneof; the
+	// API masks them together under "suspension" and rejects either field name.
+	"default_endpoint_settings.no_suspension":            "default_endpoint_settings.suspension",
+	"default_endpoint_settings.suspend_timeout_duration": "default_endpoint_settings.suspension",
+
+	// pg_version has no update_mask path. A change to it recreates the project
+	// (recreate_on_changes in resources.generated.yml).
+	"pg_version": "",
+}
+
+func (r *ResourcePostgresProject) DoUpdate(ctx context.Context, id string, config *PostgresProjectState, entry *PlanEntry) (*PostgresProjectRemote, error) {
+	// purge_on_delete is an input-only flag consulted at delete time; it is not a
+	// spec field, so toggling it between deploys is a state-only refresh (the
+	// framework saves newState when this returns a nil error).
+	if !hasSpecChanges(entry.Changes, "purge_on_delete") {
 		return nil, nil
+	}
+
+	fieldPaths, err := specUpdateMaskPaths(&config.ProjectSpec, projectSpecUpdateMask)
+	if err != nil {
+		return nil, err
 	}
 
 	waiter, err := r.client.Postgres.UpdateProject(ctx, postgres.UpdateProjectRequest{
