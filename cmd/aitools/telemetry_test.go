@@ -84,3 +84,27 @@ func TestScopeType(t *testing.T) {
 	assert.Equal(t, protos.AitoolsInstallScopeProject, scopeType(installer.ScopeProject))
 	assert.Equal(t, protos.AitoolsInstallScopeUnspecified, scopeType(""))
 }
+
+func TestAgentResultsField(t *testing.T) {
+	claude := &agents.Agent{Name: agents.NameClaudeCode}
+	codex := &agents.Agent{Name: agents.NameCodex}
+	cursor := &agents.Agent{Name: agents.NameCursor}
+
+	outcomes := []agentOutcome{
+		// Successful agents produce no entry.
+		{agent: cursor, status: outcomeInstalled, category: protos.AitoolsErrorCategoryUnspecified},
+		{agent: codex, status: outcomeFailed, category: protos.AitoolsErrorCategoryPluginInstallFailed},
+		{agent: claude, status: outcomeSkipped, category: protos.AitoolsErrorCategoryUnsupportedScope},
+		// A nil agent is skipped defensively.
+		{agent: nil, status: outcomeFailed, category: protos.AitoolsErrorCategoryPluginInstallFailed},
+	}
+
+	// Sorted by agent enum, only non-successful agents included.
+	want := []protos.AitoolsAgentResult{
+		{Agent: protos.AitoolsAgentTypeClaudeCode, Category: protos.AitoolsErrorCategoryUnsupportedScope},
+		{Agent: protos.AitoolsAgentTypeCodex, Category: protos.AitoolsErrorCategoryPluginInstallFailed},
+	}
+	assert.Equal(t, want, agentResultsField(outcomes))
+
+	assert.Nil(t, agentResultsField(nil))
+}
